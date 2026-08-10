@@ -8,14 +8,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit(0);
 }
 
-// Configuración de la base de datos para InfinityFree
-$host = 'sql104.infinityfree.com';
-$db   = 'if0_42609715_inventario'; 
-$user = 'if0_42609715';
-$pass = 'RtcFix2026';
+// Configuración de la base de datos para Railway
+$host = 'sakura.proxy.rlwy.net'; // Ej: autorack.proxy.rlwy.net
+$port = '26568'; // Ej: 26568
+$db   = 'railway'; 
+$user = 'root';
+$pass = 'pbZkTIRmLqGhjIoiYlZHlcVDscaljUoW';
 $charset = 'utf8mb4';
 
-$dsn = "mysql:host=$host;dbname=$db;charset=$charset";
+$dsn = "mysql:host=$host;port=$port;dbname=$db;charset=$charset";
 $options = [
     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
@@ -100,7 +101,7 @@ switch ($method) {
 
         $id = isset($_GET['id']) ? $_GET['id'] : null;
         if (!$id) {
-            echo json_encode(['success' => false, 'message' => 'ID de producto no proporcionado']);
+            echo json,encode(['success' => false, 'message' => 'ID de producto no proporcionado']);
             exit;
         }
 
