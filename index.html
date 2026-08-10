@@ -476,7 +476,7 @@
                 grid.innerHTML = `
                     <div style="grid-column: 1/-1; text-align: center; color: var(--danger); background: rgba(255,42,42,0.1); padding: 1.5rem; border-radius: 12px; border: 1px solid var(--danger);">
                         ⚠️ <b>Atención:</b> Estás abriendo el archivo localmente (file:///).<br>
-                        Para conectarse a la API debes subir estos archivos a GitHub/Railway o ejecutar un servidor local HTTP.
+                        Para conectarse a la API debes subir estos archivos a GitHub/Railway o ejecutar un servidor HTTP.
                     </div>`;
                 return;
             }
@@ -493,7 +493,7 @@
                 try {
                     json = JSON.parse(text);
                 } catch (e) {
-                    throw new Error("El servidor no devolvió un JSON válido. Respuesta recibida: " + text.substring(0, 100));
+                    throw new Error("El servidor no devolvió un JSON válido: " + text.substring(0, 100));
                 }
                 
                 if (json.success && Array.isArray(json.data)) {
@@ -562,8 +562,8 @@
 
         function ejecutarLogin(e) {
             e.preventDefault();
-            const u = document.getElementById("authUser").value;
-            const p = document.getElementById("authPass").value;
+            const u = document.getElementById("authUser").value.trim();
+            const p = document.getElementById("authPass").value.trim();
 
             if (u === "RTC" && p === "RTC1234") {
                 localStorage.setItem('adminAuth', 'true');
@@ -602,7 +602,6 @@
             imagenTemporal = "";
         }
 
-        /* Compresión automática de imágenes vía Canvas para evitar fallos de peso en la API */
         function convertirImagen(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -612,8 +611,8 @@
                 const img = new Image();
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 600;
-                    const MAX_HEIGHT = 600;
+                    const MAX_WIDTH = 500;
+                    const MAX_HEIGHT = 500;
                     let width = img.width;
                     let height = img.height;
 
@@ -633,28 +632,41 @@
                     canvas.height = height;
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, width, height);
-                    
-                    // Comprimir a JPEG de calidad 0.7 (ligero y rápido)
-                    imagenTemporal = canvas.toDataURL('image/jpeg', 0.7);
+                    imagenTemporal = canvas.toDataURL('image/jpeg', 0.6);
                 };
                 img.src = event.target.result;
             };
             reader.readAsDataURL(file);
         }
 
+        /* GUARDAR PRODUCTO CON ALERTAS DE DIAGNÓSTICO */
         async function guardarProducto(e) {
             e.preventDefault();
-            if (!isAdmin) return;
+            
+            if (!isAdmin) {
+                alert("🔒 Error: No estás autenticado como administrador. Haz clic en 'Conectar Auth'.");
+                abrirModalLogin();
+                return;
+            }
 
             const submitBtn = document.getElementById("btnSubmitProduct");
             const textoOriginal = submitBtn.textContent;
+            
+            const nombreVal = document.getElementById('nombre').value.trim();
+            const precioVal = document.getElementById('precio').value;
+
+            if (!nombreVal || !precioVal) {
+                alert("⚠️ Por favor completa los campos obligatorios (Nombre y Precio).");
+                return;
+            }
+
             submitBtn.disabled = true;
             submitBtn.textContent = "Procesando...";
 
             const data = {
-                nombre: document.getElementById('nombre').value.trim(),
+                nombre: nombreVal,
                 categoria: document.getElementById('categoria').value,
-                precio: parseFloat(document.getElementById('precio').value),
+                precio: parseFloat(precioVal),
                 descripcion: document.getElementById('descripcion').value.trim(),
                 imagen_url: imagenTemporal || ""
             };
@@ -671,18 +683,20 @@
                 try {
                     result = JSON.parse(text);
                 } catch(err) {
-                    throw new Error("Respuesta de servidor inválida: " + text.substring(0, 100));
+                    alert("❌ El servidor no devolvió una respuesta válida en JSON:\n" + text.substring(0, 150));
+                    throw new Error("Respuesta inválida del backend");
                 }
 
                 if (result.success) {
+                    alert("✅ ¡Producto subido exitosamente al nodo!");
                     cerrarModalAdmin();
                     await cargarProductos();
                 } else {
-                    alert("❌ Error al guardar: " + (result.message || "Credenciales o servidor rechazaron la solicitud."));
+                    alert("❌ Error desde la API: " + (result.message || "Credenciales rechazadas o fallo en base de datos"));
                 }
             } catch (error) {
                 console.error("Error al guardar producto:", error);
-                alert("❌ Error de comunicación: " + error.message);
+                alert("❌ Fallo en la comunicación con la API: " + error.message);
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.textContent = textoOriginal;
