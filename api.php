@@ -1,121 +1,111 @@
 <?php
-header('Content-Type: application/json; charset=utf-8');
+// 1. Ocultar warnings/errores de PHP en el buffer para evitar corrupto en el JSON
+error_reporting(0);
+ini_set('display_errors', '0');
+
+// 2. Encabezados HTTP estrictos
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, X-Admin-User, X-Admin-Password');
+header('Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS');
+header('Content-Type: application/json; charset=utf-8');
 
+// Responder inmediatamente si es una petición PREFLIGHT (CORS)
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    exit(0);
-}
-
-// Configuración de la base de datos para Railway
-$host = 'sakura.proxy.rlwy.net'; // Ej: autorack.proxy.rlwy.net
-$port = '26568'; // Ej: 26568
-$db   = 'railway'; 
-$user = 'root';
-$pass = 'pbZkTIRmLqGhjIoiYlZHlcVDscaljUoW';
-$charset = 'utf8mb4';
-
-$dsn = "mysql:host=$host;port=$port;dbname=$db;charset=$charset";
-$options = [
-    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    PDO::ATTR_EMULATE_PREPARES   => false,
-];
-
-try {
-    $pdo = new PDO($dsn, $user, $pass, $options);
-} catch (\PDOException $e) {
-    echo json_encode(['success' => false, 'message' => 'Error de conexión: ' . $e->getMessage()]);
+    http_response_code(200);
     exit;
 }
 
-// Credenciales del Administrador
-$admin_user = 'RTC';
-$admin_pass = 'RTC1234';
+// 3. Configuración de Base de Datos (Ajusta tus datos aquí si no usas variables de entorno)
+$host = getenv('MYSQLHOST') ?: 'localhost';
+$db   = getenv('MYSQLDATABASE') ?: 'tu_base_de_datos';
+$user = getenv('MYSQLUSER') ?: 'root';
+$pass = getenv('MYSQLPASSWORD') ?: '';
+$port = getenv('MYSQLPORT') ?: '3306';
 
-function verificarAuth() {
-    global $admin_user, $admin_pass;
-    $headers = [];
-    if (function_exists('getallheaders')) {
-        $headers = getallheaders();
-    } else {
-        foreach ($_SERVER as $name => $value) {
-            if (substr($name, 0, 5) == 'HTTP_') {
-                $headers[str_replace(' ', '-', ucwords(strtolower(str_replace('_', ' ', substr($name, 5)))))] = $value;
-            }
-        }
-    }
-    
-    $u = isset($headers['X-Admin-User']) ? $headers['X-Admin-User'] : '';
-    $p = isset($headers['X-Admin-Password']) ? $headers['X-Admin-Password'] : '';
-    
-    return ($u === $admin_user && $p === $admin_pass);
+try {
+    $pdo = new PDO("mysql:host=$host;port=$port;dbname=$db;charset=utf8mb4", $user, $pass, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+    ]);
+} catch (PDOException $e) {
+    echo json_encode([
+        'success' => false,
+        'message' => 'Error de conexión MySQL: ' . $e->getMessage()
+    ]);
+    exit;
+}
+
+// 4. Verificación de credenciales de Admin
+function esAdmin() {
+    $headers = array_change_key_case(getallheaders(), CASE_LOWER);
+    $authUser = $headers['x-admin-user'] ?? $_SERVER['HTTP_X_ADMIN_USER'] ?? '';
+    $authPass = $headers['x-admin-password'] ?? $_SERVER['HTTP_X_ADMIN_PASSWORD'] ?? '';
+    return ($authUser === 'RTC' && $authPass === 'RTC1234');
 }
 
 $method = $_SERVER['REQUEST_METHOD'];
 
-switch ($method) {
-    case 'GET':
-        try {
+try {
+    switch ($method) {
+        case 'GET':
             $stmt = $pdo->query("SELECT * FROM productos ORDER BY id DESC");
             $productos = $stmt->fetchAll();
-            echo json_encode(['success' => true, 'data' => $productos]);
-        } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
-        }
-        break;
+            echo json_encode([
+                'success' => true,
+                'data' => $productos
+            ]);
+            break;
 
-    case 'POST':
-        if (!verificarAuth()) {
-            echo json_encode(['success' => false, 'message' => 'No autorizado. Credenciales incorrectas.']);
-            exit;
-        }
-        
-        $input = json_decode(file_get_contents('php://input'), true);
-        if (!$input) {
-            echo json_encode(['success' => false, 'message' => 'Datos inválidos']);
-            exit;
-        }
+        case 'POST':
+            if (!esAdmin()) {
+                echo json_encode(['success' => false, 'message' => 'No autorizado: Credenciales incorrectas']);
+                exit;
+            }
 
-        try {
+            $input = json_decode(file_get_contents('php://input'), true);
+
+            if (empty($input['nombre']) || !isset($input['precio'])) {
+                echo json_encode(['success' => false, 'message' => 'Faltan datos obligatorios (Nombre o Precio)']);
+                exit;
+            }
+
             $stmt = $pdo->prepare("INSERT INTO productos (nombre, categoria, precio, descripcion, imagen_url) VALUES (?, ?, ?, ?, ?)");
             $stmt->execute([
-                $input['nombre'] ?? '',
-                $input['categoria'] ?? '',
-                $input['precio'] ?? 0,
+                $input['nombre'],
+                $input['categoria'] ?? 'General',
+                $input['precio'],
                 $input['descripcion'] ?? '',
                 $input['imagen_url'] ?? ''
             ]);
-            echo json_encode(['success' => true, 'message' => 'Producto agregado con éxito']);
-        } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
-        }
-        break;
 
-    case 'DELETE':
-        if (!verificarAuth()) {
-            echo json_encode(['success' => false, 'message' => 'No autorizado. Credenciales incorrectas.']);
-            exit;
-        }
+            echo json_encode(['success' => true, 'message' => 'Producto guardado en el nodo']);
+            break;
 
-        $id = isset($_GET['id']) ? $_GET['id'] : null;
-        if (!$id) {
-            echo json,encode(['success' => false, 'message' => 'ID de producto no proporcionado']);
-            exit;
-        }
+        case 'DELETE':
+            if (!esAdmin()) {
+                echo json_encode(['success' => false, 'message' => 'No autorizado: Credenciales incorrectas']);
+                exit;
+            }
 
-        try {
+            $id = $_GET['id'] ?? null;
+            if (!$id) {
+                echo json_encode(['success' => false, 'message' => 'ID no proporcionado']);
+                exit;
+            }
+
             $stmt = $pdo->prepare("DELETE FROM productos WHERE id = ?");
             $stmt->execute([$id]);
-            echo json_encode(['success' => true, 'message' => 'Producto eliminado con éxito']);
-        } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
-        }
-        break;
 
-    default:
-        echo json_encode(['success' => false, 'message' => 'Método no soportado']);
-        break;
+            echo json_encode(['success' => true, 'message' => 'Registro eliminado']);
+            break;
+
+        default:
+            echo json_encode(['success' => false, 'message' => 'Método HTTP no permitido']);
+            break;
+    }
+} catch (Exception $e) {
+    echo json_encode([
+        'success' => false,
+        'message' => 'Error de consulta SQL: ' . $e->getMessage()
+    ]);
 }
-?>
