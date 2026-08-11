@@ -42,9 +42,17 @@ try {
 }
 
 function esAdmin() {
-    $headers = array_change_key_case(getallheaders(), CASE_LOWER);
-    $authUser = $headers['x-admin-user'] ?? $_SERVER['HTTP_X_ADMIN_USER'] ?? '';
-    $authPass = $headers['x-admin-password'] ?? $_SERVER['HTTP_X_ADMIN_PASSWORD'] ?? '';
+    // 1. CORRECCIÓN: Leemos directamente desde $_SERVER (Universal para Nginx y Apache)
+    $authUser = $_SERVER['HTTP_X_ADMIN_USER'] ?? '';
+    $authPass = $_SERVER['HTTP_X_ADMIN_PASSWORD'] ?? '';
+    
+    // Fallback seguro por si se está usando un servidor Apache muy estricto
+    if (empty($authUser) && empty($authPass) && function_exists('getallheaders')) {
+        $headers = array_change_key_case(getallheaders(), CASE_LOWER);
+        $authUser = $headers['x-admin-user'] ?? '';
+        $authPass = $headers['x-admin-password'] ?? '';
+    }
+
     return ($authUser === 'RTC' && $authPass === 'RTC1234');
 }
 
@@ -104,9 +112,10 @@ try {
             responderJSON(['success' => false, 'message' => 'Método no soportado']);
             break;
     }
-} catch (Exception $e) {
+// 2. CORRECCIÓN: Cambiado de Exception a Throwable para atrapar Errores Fatales
+} catch (Throwable $e) {
     responderJSON([
         'success' => false,
-        'message' => 'Error en consulta SQL: ' . $e->getMessage()
+        'message' => 'Error del servidor: ' . $e->getMessage()
     ]);
 }
