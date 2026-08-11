@@ -28,6 +28,7 @@
         .search-bar { flex: 1; padding: 0.8rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 1rem; }
         .btn { background: var(--primary); color: white; border: none; padding: 0.8rem 1.5rem; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
         .btn:hover { opacity: 0.9; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .btn-admin { background: #475569; display: none; }
         .btn-login { background: #0284c7; }
         .btn-logout { background: #64748b; font-size: 0.85rem; padding: 0.5rem 1rem; display: none; }
@@ -39,7 +40,7 @@
         .card:hover { transform: translateY(-4px); }
         .card img { width: 100%; height: 220px; object-fit: contain; background: #fff; padding: 10px; border-bottom: 1px solid #f1f5f9; }
         .card-body { padding: 1.2rem; flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
-        .badge { background: #e2e8f0; color: #475569; font-size: 0.75rem; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: bold; text-transform: uppercase; }
+        .badge { background: #e2e8f0; color: #475569; font-size: 0.75rem; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: bold; text-transform: uppercase; align-self: flex-start; }
         .card-title { font-size: 1.1rem; margin: 0.5rem 0; color: var(--dark); }
         .card-desc { font-size: 0.85rem; color: #64748b; margin-bottom: 1rem; line-height: 1.3; }
         .price { font-size: 1.4rem; font-weight: bold; color: var(--accent); margin-bottom: 0.5rem; }
@@ -74,7 +75,9 @@
             <button class="btn btn-admin" id="btnAddProduct" onclick="abrirModalAdmin()">+ Añadir Producto</button>
         </div>
 
-        <div class="grid" id="productGrid"></div>
+        <div class="grid" id="productGrid">
+            <p style="grid-column: 1/-1; text-align: center; color: #64748b;">⏳ Cargando inventario desde la base de datos...</p>
+        </div>
     </div>
 
     <!-- Modal Login -->
@@ -131,7 +134,7 @@
                 </div>
                 <div class="modal-actions">
                     <button type="button" class="btn btn-close" onclick="cerrarModalAdmin()">Cancelar</button>
-                    <button type="submit" class="btn">Guardar en Inventario</button>
+                    <button type="submit" class="btn" id="btnSubmit">Guardar en Inventario</button>
                 </div>
             </form>
         </div>
@@ -141,22 +144,16 @@
         const ADMIN_USER = "RTC";
         const ADMIN_PASS = "RTC1234";
 
-        const productosIniciales = [
-            { id: 1, nombre: "HiKING Mini S25", categoria: "Telefonía", precio: 1100, desc: "Smartphone compacto diseño multi-cámara en color verde menta.", img: "https://via.placeholder.com/300x300?text=HiKING+Mini+S25" },
-            { id: 2, nombre: "Bocina Ridgeway NS-8129BT", categoria: "Audio", precio: 350, desc: "Radio retro 3 bandas (FM/AM/SW), Bluetooth, USB y USB-C.", img: "https://via.placeholder.com/300x300?text=Ridgeway+NS-8129BT" },
-            { id: 3, nombre: "Bocina Ridgeway RA2301", categoria: "Audio", precio: 350, desc: "Doble altavoz, reproductor MP3 USB/MicroSD y Bluetooth.", img: "https://via.placeholder.com/300x300?text=Ridgeway+RA2301" },
-            { id: 4, nombre: "Bocina Solar Ridgeway SPE-T906", categoria: "Audio", precio: 320, desc: "Radio 7 bandas con panel solar y linterna de mano integrada.", img: "https://via.placeholder.com/300x300?text=SPE-T906+Solar" },
-            { id: 5, nombre: "Audífonos Samsung Level On BT600", categoria: "Audio", precio: 350, desc: "Audífonos Bluetooth con iluminación RGB multicolor.", img: "https://via.placeholder.com/300x300?text=Samsung+BT600" },
-            { id: 6, nombre: "Adaptador Apple Lightning a Jack 3.5mm", categoria: "Accesorios", precio: 150, desc: "Adaptador para audífonos tradicionales a puerto Lightning.", img: "https://via.placeholder.com/300x300?text=Lightning+to+Jack" },
-            { id: 7, nombre: "Cable Apple Lightning a AUX 3.5mm", categoria: "Accesorios", precio: 150, desc: "Cable directo para conectar iPhone a estéreos o bocinas.", img: "https://via.placeholder.com/300x300?text=Lightning+to+AUX" },
-            { id: 8, nombre: "Cable Apple USB-C a Lightning (1m)", categoria: "Accesorios", precio: 200, desc: "Cable de carga rápida y datos de 1 metro.", img: "https://via.placeholder.com/300x300?text=USB-C+to+Lightning" },
-            { id: 9, nombre: "Adaptador OTG Tipo-C Kit S-k07", categoria: "Accesorios", precio: 100, desc: "Para conectar memorias USB, teclados o mouses al celular.", img: "https://via.placeholder.com/300x300?text=OTG+Type-C" },
-            { id: 10, nombre: "Mouse Óptico Buytiti DNS-9210", categoria: "Cómputo", precio: 120, desc: "Mouse alámbrico USB con iluminación LED Neón integrada.", img: "https://via.placeholder.com/300x300?text=Mouse+Buytiti" }
-        ];
-
-        let baseDeDatos = JSON.parse(localStorage.getItem("inventario_db")) || productosIniciales;
+        let baseDeDatos = [];
         let esAdmin = localStorage.getItem("inventario_auth") === "true";
         let imagenTemporal = "";
+
+        function getAuthHeaders() {
+            return {
+                'X-Admin-User': localStorage.getItem('adminUser') || '',
+                'X-Admin-Password': localStorage.getItem('adminPass') || ''
+            };
+        }
 
         function actualizarInterfazAuth() {
             const btnAdd = document.getElementById("btnAddProduct");
@@ -178,19 +175,57 @@
             renderizarProductos(baseDeDatos);
         }
 
+        async function cargarProductos() {
+            const grid = document.getElementById("productGrid");
+            grid.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color: #64748b;">⏳ Cargando datos del servidor...</p>';
+
+            try {
+                const res = await fetch('./api.php?t=' + Date.now());
+                const rawText = await res.text();
+
+                let json;
+                try {
+                    json = JSON.parse(rawText);
+                } catch (e) {
+                    throw new Error("El servidor devolvió una respuesta no válida (HTML/Error PHP): " + rawText.substring(0, 100));
+                }
+
+                if (json.success && Array.isArray(json.data)) {
+                    baseDeDatos = json.data;
+                    renderizarProductos(baseDeDatos);
+                } else {
+                    grid.innerHTML = `<p style="grid-column: 1/-1; text-align: center; color: var(--danger);">❌ ${json.message || 'Error al obtener datos'}</p>`;
+                }
+            } catch (error) {
+                console.error("Error al cargar productos:", error);
+                grid.innerHTML = `
+                    <div style="grid-column: 1/-1; text-align: center; color: var(--danger); background: #fee2e2; padding: 1rem; border-radius: 8px;">
+                        ⚠️ <b>Fallo de conexión con la API:</b><br>${error.message}
+                    </div>`;
+            }
+        }
+
         function renderizarProductos(lista) {
             const grid = document.getElementById("productGrid");
             grid.innerHTML = "";
+
+            if (!lista || lista.length === 0) {
+                grid.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color: #64748b;">No hay productos registrados en el inventario.</p>';
+                return;
+            }
+
             lista.forEach(p => {
                 const btnEliminarHtml = esAdmin ? `<button class="btn btn-delete" onclick="eliminarProducto(${p.id})">🗑️ Eliminar Producto</button>` : '';
+                const imgSrc = p.imagen_url && p.imagen_url.trim() !== "" ? p.imagen_url : "https://via.placeholder.com/300x300?text=Sin+Imagen";
+
                 grid.innerHTML += `
                     <div class="card">
                         <div>
-                            <img src="${p.img}" alt="${p.nombre}">
+                            <img src="${imgSrc}" alt="${p.nombre}">
                             <div class="card-body">
                                 <span class="badge">${p.categoria}</span>
                                 <h3 class="card-title">${p.nombre}</h3>
-                                <p class="card-desc">${p.desc}</p>
+                                <p class="card-desc">${p.descripcion || p.desc || 'Sin descripción disponible.'}</p>
                             </div>
                         </div>
                         <div class="card-body" style="padding-top: 0;">
@@ -220,14 +255,17 @@
 
         function ejecutarLogin(e) {
             e.preventDefault();
-            const u = document.getElementById("authUser").value;
-            const p = document.getElementById("authPass").value;
+            const u = document.getElementById("authUser").value.trim();
+            const p = document.getElementById("authPass").value.trim();
 
             if (u === ADMIN_USER && p === ADMIN_PASS) {
                 esAdmin = true;
                 localStorage.setItem("inventario_auth", "true");
+                localStorage.setItem("adminUser", u);
+                localStorage.setItem("adminPass", p);
                 cerrarModalLogin();
                 actualizarInterfazAuth();
+                cargarProductos();
             } else {
                 document.getElementById("loginError").style.display = "block";
             }
@@ -236,48 +274,138 @@
         function cerrarSesion() {
             esAdmin = false;
             localStorage.removeItem("inventario_auth");
+            localStorage.removeItem("adminUser");
+            localStorage.removeItem("adminPass");
             actualizarInterfazAuth();
+            cargarProductos();
         }
 
         function abrirModalAdmin() { document.getElementById("adminModal").style.display = "flex"; }
-        function cerrarModalAdmin() { document.getElementById("adminModal").style.display = "none"; }
-
-        function convertirImagen(e) {
-            const file = e.target.files[0];
-            const reader = new FileReader();
-            reader.onloadend = () => { imagenTemporal = reader.result; };
-            if (file) reader.readAsDataURL(file);
-        }
-
-        function guardarProducto(e) {
-            e.preventDefault();
-            if (!esAdmin) return;
-            const nuevo = {
-                id: Date.now(),
-                nombre: document.getElementById("nombre").value,
-                categoria: document.getElementById("categoria").value,
-                precio: document.getElementById("precio").value,
-                desc: document.getElementById("descripcion").value,
-                img: imagenTemporal || "https://via.placeholder.com/300x300?text=Sin+Imagen"
-            };
-            baseDeDatos.unshift(nuevo);
-            localStorage.setItem("inventario_db", JSON.stringify(baseDeDatos));
-            renderizarProductos(baseDeDatos);
-            cerrarModalAdmin();
+        function cerrarModalAdmin() { 
+            document.getElementById("adminModal").style.display = "none";
             document.getElementById("productForm").reset();
             imagenTemporal = "";
         }
 
-        function eliminarProducto(id) {
-            if (!esAdmin) return;
-            if (confirm("¿Estás seguro de que deseas eliminar este producto del inventario?")) {
-                baseDeDatos = baseDeDatos.filter(p => p.id !== id);
-                localStorage.setItem("inventario_db", JSON.stringify(baseDeDatos));
-                renderizarProductos(baseDeDatos);
+        function convertirImagen(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 500;
+                    const MAX_HEIGHT = 500;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > height) {
+                        if (width > MAX_WIDTH) {
+                            height *= MAX_WIDTH / width;
+                            width = MAX_WIDTH;
+                        }
+                    } else {
+                        if (height > MAX_HEIGHT) {
+                            width *= MAX_HEIGHT / height;
+                            height = MAX_HEIGHT;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    imagenTemporal = canvas.toDataURL('image/jpeg', 0.6);
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function guardarProducto(e) {
+            e.preventDefault();
+            if (!esAdmin) {
+                alert("🔒 Debes autenticarte como Administrador para guardar productos.");
+                return;
+            }
+
+            const btnSubmit = document.getElementById("btnSubmit");
+            const textoOriginal = btnSubmit.textContent;
+            btnSubmit.disabled = true;
+            btnSubmit.textContent = "Guardando...";
+
+            const payload = {
+                nombre: document.getElementById("nombre").value.trim(),
+                categoria: document.getElementById("categoria").value,
+                precio: parseFloat(document.getElementById("precio").value),
+                descripcion: document.getElementById("descripcion").value.trim(),
+                imagen_url: imagenTemporal || ""
+            };
+
+            try {
+                const res = await fetch('./api.php', {
+                    method: 'POST',
+                    headers: {
+                        ...getAuthHeaders(),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const rawText = await res.text();
+                let result;
+                try {
+                    result = JSON.parse(rawText);
+                } catch (err) {
+                    alert("❌ El servidor no devolvió una respuesta JSON válida:\n" + rawText.substring(0, 150));
+                    throw new Error("Respuesta no válida del backend");
+                }
+
+                if (result.success) {
+                    alert("✅ Producto guardado correctamente en la base de datos.");
+                    cerrarModalAdmin();
+                    await cargarProductos();
+                } else {
+                    alert("❌ Error: " + (result.message || "No se pudo guardar el producto."));
+                }
+            } catch (error) {
+                console.error("Error al guardar producto:", error);
+                alert("❌ Fallo de conexión: " + error.message);
+            } finally {
+                btnSubmit.disabled = false;
+                btnSubmit.textContent = textoOriginal;
             }
         }
 
+        async function eliminarProducto(id) {
+            if (!esAdmin) return;
+            if (!confirm("¿Estás seguro de que deseas eliminar este producto del inventario?")) return;
+
+            try {
+                const res = await fetch('./api.php?id=' + id, {
+                    method: 'DELETE',
+                    headers: getAuthHeaders()
+                });
+
+                const rawText = await res.text();
+                let result = JSON.parse(rawText);
+
+                if (result.success) {
+                    await cargarProductos();
+                } else {
+                    alert("❌ Error al eliminar: " + result.message);
+                }
+            } catch (error) {
+                console.error("Error al eliminar producto:", error);
+                alert("❌ Error de comunicación al intentar eliminar.");
+            }
+        }
+
+        // Inicialización de la app
         actualizarInterfazAuth();
+        cargarProductos();
     </script>
 </body>
 </html>
